@@ -1791,7 +1791,9 @@ PDBParser::printBreakpadSymbols(FILE* of, const char* platform, FileMod* fileMod
 
 	for (auto& mod : modules)
 	{
-		resolveFunctionLines(mod.info.data, functions, unique, mod.srcIndex);
+		if (functions.size() > 0) {
+			resolveFunctionLines(mod.info.data, functions, unique, mod.srcIndex);
+		}
 	}
 
 	std::map<std::pair<uint32_t, uint32_t>, DataPtr<FPO_DATA>> fpov1Data;
@@ -1808,39 +1810,40 @@ PDBParser::printBreakpadSymbols(FILE* of, const char* platform, FileMod* fileMod
 	// We cheat in the Function < operator so that we can sort
 	// first, now iterate over the functions and remove the functions that are duplicates,
 	// we don't actually remove the functions, just make it so that they are skipped from printing
-	FunctionRecord* current = &functions[0];
-	for (uint32_t i = 1, end = (uint32_t)functions.size(); i < end; ++i)
-	{
-		if (*current == functions[i])
+	if (functions.size() > 0) {
+		FunctionRecord* current = &functions[0];
+		for (uint32_t i = 1, end = (uint32_t)functions.size(); i < end; ++i)
 		{
-			// Duplicate! Preserve whichever one is 'most' interesting
-			if (current->lines.data || !functions[i].lines.data)
-				functions[i].segment = 0xffffffff;
-			else if (functions[i].lines.data)
+			if (*current == functions[i])
 			{
-				current->segment = 0xffffffff;
+				// Duplicate! Preserve whichever one is 'most' interesting
+				if (current->lines.data || !functions[i].lines.data)
+					functions[i].segment = 0xffffffff;
+				else if (functions[i].lines.data)
+				{
+					current->segment = 0xffffffff;
+					current = &functions[i];
+				}
+			}
+			else
 				current = &functions[i];
-			}
 		}
-		else
-			current = &functions[i];
-	}
-	// Offset functions by segment address and
-	// try to fill in paramSize from FPO data.
-	for (auto& func : functions)
-	{
-		if (func.segment == 0xffffffff)
-			continue;
-		func.offset += sections[func.segment - 1].VirtualAddress;
-		if (!updateParamSize(func, fpov2Data))
+		// Offset functions by segment address and
+		// try to fill in paramSize from FPO data.
+		for (auto& func : functions)
 		{
-			if (!updateParamSize(func, fpov1Data))
+			if (func.segment == 0xffffffff)
+				continue;
+			func.offset += sections[func.segment - 1].VirtualAddress;
+			if (!updateParamSize(func, fpov2Data))
 			{
-				updateParamSize(func, globals);
+				if (!updateParamSize(func, fpov1Data))
+				{
+					updateParamSize(func, globals);
+				}
 			}
 		}
 	}
-
 	// Wait for the type stream to be loaded, and all of the src files to be written
 	tg.wait();
 
